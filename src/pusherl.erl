@@ -22,6 +22,10 @@
   code_change/3
 ]).
 
+%% internal
+
+-export([http_request/4]).
+
 %% state record
 
 -record(state,{
@@ -69,29 +73,17 @@ init([AppId, Key, Secret, Host]) ->
 
 handle_call({push, {ChannelName, EventName, Payload}}, _From, State) ->
   case http_request(ChannelName, EventName, Payload, State) of
-    {ok, Client} ->
-      Response = case cowboy_client:response(Client) of
-        {ok, 200, _, _} ->
-          ok;
-        {ok, Code, _Headers, Client2} ->
-          {ok, Body, _} = cowboy_client:response_body(Client2),
-          {error, Code, Body}
-      end,
-
-      {reply, Response, State};
-    {error, Error} ->
-      {reply, {error, Error}, State}
+    ok ->
+      {noreply, ok, State};
+    Error ->
+      {reply, Error, State}
   end;
 handle_call(_Request, _From, State) ->
   {noreply, ok, State}.
 
 handle_cast({push, {ChannelName, EventName, Payload}}, State) ->
-  case http_request(ChannelName, EventName, Payload, State) of
-    {ok, _} ->
-      {noreply, ok, State};
-    {error, _} ->
-      {noreply, error, State}
-  end;
+  http_request(ChannelName, EventName, Payload, State),
+  {noreply, State};
 handle_cast(_Msg, State) ->
   {noreply, State}.
 
@@ -104,13 +96,20 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
-
 %% internal
 
 http_request(ChannelName, EventName, Payload, Config) ->
   {ok, Method, URL, Headers, Body} = http_request_props(ChannelName, EventName, Payload, Config),
   {ok, Client} = cowboy_client:init([]),
-  cowboy_client:request(Method, URL, Headers, Body, Client).
+  {ok, Client2} = cowboy_client:request(Method, URL, Headers, Body, Client),
+  case cowboy_client:response(Client2) of
+    {ok, 200, _, Client3} ->
+      cowboy_client:skip_body(Client3),
+      ok;
+    {ok, Code, _Headers, Client3} ->
+      {ok, Resp, _} = cowboy_client:response_body(Client3),
+      {error, Code, Resp}
+  end.
 
 http_request_props(ChannelName, EventName, Payload, State) when is_binary(ChannelName) ->
   http_request_props([ChannelName], EventName, Payload, State);
