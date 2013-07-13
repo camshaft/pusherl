@@ -6,8 +6,10 @@
 
 -export([start/0]).
 -export([start_link/0]).
+-export([start_link/1]).
 -export([start_link/3]).
 -export([start_link/4]).
+-export([parse_url/1]).
 -export([push/3]).
 -export([push_async/3]).
 
@@ -43,16 +45,27 @@ start() ->
   application:start(pusherl).
 
 start_link() ->
-  {ok, PusherAppId} = application:get_env(pusher_app_id),
-  {ok, PusherKey} = application:get_env(pusher_key),
-  {ok, PusherSecret} = application:get_env(pusher_secret),
-  start_link(list_to_binary(PusherAppId), list_to_binary(PusherKey), list_to_binary(PusherSecret)).
+  {ok, AppId} = application:get_env(pusher_app_id),
+  {ok, Key} = application:get_env(pusher_key),
+  {ok, Secret} = application:get_env(pusher_secret),
+  start_link(list_to_binary(AppId), list_to_binary(Key), list_to_binary(Secret)).
+
+start_link(PusherURL) when is_binary(PusherURL) ->
+  {AppId, Key, Secret, Host} = parse_url(PusherURL),
+  start_link(AppId, Key, Secret, Host).
 
 start_link(AppId, Key, Secret) ->
   start_link(AppId, Key, Secret, <<"api.pusherapp.com">>).
 
 start_link(AppId, Key, Secret, Host) ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [AppId, Key, Secret, Host], []).
+
+parse_url(PusherUrl)->
+  [_Proto, Rest] = binary:split(PusherUrl, <<"://">>),
+  [Key, Rest2] = binary:split(Rest, <<":">>),
+  [Secret, Rest3] = binary:split(Rest2, <<"@">>),
+  [Host, AppId] = binary:split(Rest3, <<"/apps/">>),
+  {AppId, Key, Secret, Host}.
 
 push(ChannelName, EventName, Payload) when is_list(Payload) ->
   EncodedPayload = jsx:encode(Payload),
