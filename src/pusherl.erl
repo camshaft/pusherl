@@ -4,6 +4,7 @@
 
 %% api
 
+-export([start/0]).
 -export([start_link/0]).
 -export([start_link/3]).
 -export([start_link/4]).
@@ -32,6 +33,10 @@
 }).
 
 %% api
+
+start() ->
+  application:start(crypto),
+  application:start(pusherl).
 
 start_link() ->
   {ok, PusherAppId} = application:get_env(pusher_app_id),
@@ -65,8 +70,15 @@ init([AppId, Key, Secret, Host]) ->
 handle_call({push, {ChannelName, EventName, Payload}}, _From, State) ->
   case http_request(ChannelName, EventName, Payload, State) of
     {ok, Client} ->
-      Response = cowboy_client:response(Client),
-      {reply, {ok, Response}, State};
+      Response = case cowboy_client:response(Client) of
+        {ok, 200, _, _} ->
+          ok;
+        {ok, Code, _Headers, Client2} ->
+          {ok, Body, _} = cowboy_client:response_body(Client2),
+          {error, Code, Body}
+      end,
+
+      {reply, Response, State};
     {error, Error} ->
       {reply, {error, Error}, State}
   end;
@@ -109,8 +121,8 @@ http_request_props(Channels, EventName, Payload, #state{app_id=AppId, key=AppKey
 
   Body = jsx:encode([
     {<<"name">>, EventName},
-    {<<"data">>, Payload},
-    {<<"channels">>, Channels}
+    {<<"channels">>, Channels},
+    {<<"data">>, Payload}
   ]),
 
   QS = binary_join([
@@ -122,12 +134,12 @@ http_request_props(Channels, EventName, Payload, #state{app_id=AppId, key=AppKey
 
   ToSign = binary_join([Method, Path, QS], <<"\n">>),
 
-  AuthSignature = crypto:hmac(sha256, AppSecret, ToSign),
+  AuthSignature = bin_to_hex(crypto:hmac(sha256, AppSecret, ToSign)),
 
-  URL = <<Scheme/binary, "://", Host/binary, Path/binary, "?", QS, "&auth_signature=", AuthSignature/binary>>,
+  URL = <<Scheme/binary, "://", Host/binary, Path/binary, "?", QS/binary, "&auth_signature=", AuthSignature/binary>>,
 
   Headers = [
-    {<<"content-type">>, <<"application/x-www-form-urlencoded">>}
+    {<<"content-type">>, <<"application/json">>}
   ],
 
   {ok, Method, URL, Headers, Body}.
@@ -144,4 +156,10 @@ binary_join([H | T], Sep) ->
   << H/binary, Sep/binary, (binary_join(T, Sep))/binary >>.
 
 bin_to_hex(Bin) ->
-  list_to_binary([hd(integer_to_list(I, 16)) || <<I:4>> <= Bin]).
+  list_to_binary([hexdigit(I) || <<I:4>> <= Bin]).
+
+%% @doc Convert an integer less than 16 to a hex digit.
+hexdigit(C) when C >= 0, C =< 9 ->
+    C + $0;
+hexdigit(C) when C =< 15 ->
+    C + $a - 10.

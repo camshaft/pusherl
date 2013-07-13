@@ -9,8 +9,8 @@
   ]},
   {mod, {pusherl_app, []}},
   {env, [
-    {pusher_app_id, "your_app_id_as_list"},
-    {pusher_key, "your_key_as_list"},
-    {pusher_secret, "your_secret_as_list"}
+    {pusher_app_id, "3"},
+    {pusher_key, "278d425bdf160c739803"},
+    {pusher_secret, "7ad3773142a6692b25b8"}
   ]}
 ]}.
