@@ -141,7 +141,7 @@ http_request_props(Channels, EventName, Payload, #state{app_id=AppId, key=AppKey
     <<"auth_key=", AppKey/binary>>,
     <<"auth_timestamp=", (timestamp())/binary>>,
     <<"auth_version=1.0">>,
-    <<"body_md5=", (bin_to_hex(crypto:md5(Body)))/binary>>
+    <<"body_md5=", (bin_to_hex(crypto:hash(md5, Body)))/binary>>
   ], <<"&">>),
 
   ToSign = binary_join([Method, Path, QS], <<"\n">>),
